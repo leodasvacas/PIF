@@ -152,8 +152,8 @@ public class PIFNode extends Node {
   		
   		if (n < 1000)
   		{
-  			InstanceTimer instMSG = new InstanceTimer (n+1, this);
-  			instMSG.startRelative(4.9, this);
+  			//InstanceTimer instMSG = new InstanceTimer (n+1, this);
+  			//instMSG.startRelative(4.9, this);
   		}
 	}
 
