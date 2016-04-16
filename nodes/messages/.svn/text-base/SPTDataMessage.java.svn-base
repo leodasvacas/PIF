@@ -1,0 +1,67 @@
+package projects.SPT.nodes.messages;
+
+import sinalgo.nodes.messages.Message;
+
+public class SPTDataMessage extends Message {
+	private int dest;
+	private String sendTo;
+	private String payload;
+	private int agregados;
+	
+
+	public SPTDataMessage(int dest, String payload, String sendto, int agregados) {
+		this.dest = dest;
+		this.payload = payload;
+		this.sendTo = sendto;
+		this.agregados = agregados;
+	}
+
+
+	public String getSendTo() {
+		return sendTo;
+	}
+
+
+	public void setSendTo(String sendTo) {
+		this.sendTo = sendTo;
+	}
+
+
+	@Override
+	public Message clone() {
+		// TODO Auto-generated method stub
+		return this;
+	}
+
+
+	public int getDest() {
+		return dest;
+	}
+
+
+	public void setDest(int dest) {
+		this.dest = dest;
+	}
+	public String getPayload() {
+		return payload;
+	}
+
+
+	public void setPayload(String payload) {
+		this.payload = payload;
+	}
+
+
+	public int getAgregados() {
+		return agregados;
+	}
+
+
+	public void setAgregados(int agregados) {
+		this.agregados = agregados;
+	}
+	
+	
+	
+
+}

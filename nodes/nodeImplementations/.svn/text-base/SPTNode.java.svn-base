@@ -1,0 +1,447 @@
+package projects.SPT.nodes.nodeImplementations;
+import sinalgo.configuration.CorruptConfigurationEntryException;
+import sinalgo.configuration.WrongConfigurationException;
+import sinalgo.gui.transformation.PositionTransformation;
+import sinalgo.nodes.Node;
+import sinalgo.nodes.Node.NodePopupMethod;
+import sinalgo.nodes.messages.Inbox;
+import sinalgo.nodes.messages.Message;
+import sinalgo.runtime.Global;
+import sinalgo.tools.Tools;
+import sinalgo.tools.logging.Logging;
+import sinalgo.tools.statistics.UniformDistribution;
+import java.awt.Color;
+import java.awt.Graphics;
+import java.util.ArrayList;
+
+import projects.CNS.nodes.messages.MANAMessage;
+import projects.Infra.nodes.timers.MessageTimer;
+import projects.PEAR.nodes.messages.MSGTREE;
+import projects.PEAR.nodes.nodeImplementations.PEARNode.TNO;
+import projects.PEAR.nodes.timers.MessageLeoTimer;
+import projects.SPT.nodes.messages.SPTDataMessage;
+import projects.SPT.nodes.messages.MCIMessage;
+import projects.SPT.nodes.timers.SPTTimer;
+import projects.SPT.nodes.timers.EndSPTTimer;
+import projects.SPT.nodes.timers.EventSPTTimer;
+import projects.SPT.nodes.timers.MessageSPTTimer;
+
+
+public class SPTNode extends Node {
+	private int HopToSink   = 100000;  			// Distance in Hops to Sink
+	private int NextHopSink		= 100000; 			// My Relay of Data
+	private int ownerID		= this.ID;			// My OwnerID
+	private boolean senddata = false;			//
+	private int eventnum = 0;					//
+	private int dataRate = 60;
+	private int aggregatePCKT =0;
+	private int msgAggPckts=0;
+	private int Disttree = 0;
+	private int Disttreerecv =0;
+	private boolean sentmci = false;
+	private boolean timerAggOn = false;
+	private UniformDistribution uniformRandom =  new UniformDistribution(0,0.016);
+	Logging sptLog;
+	private ArrayList<Integer> lastFloodedCHs = new ArrayList<Integer>();
+	@Override
+	public void checkRequirements() throws WrongConfigurationException {
+		// TODO Auto-generated method stub
+	}
+	private enum Status {MONITORING, READY};
+	private enum Roles { SINK, COLLABORATOR, RELAY };
+	public enum TNO {TREE, MONITORING, AGGREGATION};
+	private SPTTimer timerTREE;
+	private SPTTimer timerAgg;
+	private Roles myRole;
+	private Status mystatus;
+	private ArrayList<Integer> son = new ArrayList<Integer>();
+	double eventEndTime = 0;
+	private boolean sentmana=false;
+	private ArrayList<Integer> filhos = new ArrayList<Integer>();
+	private ArrayList<Integer> filhossend = new ArrayList<Integer>();
+	private ArrayList<Integer> filhosrecv = new ArrayList<Integer>();
+	@Override
+	public void handleMessages(Inbox inbox) {
+		// TODO Auto-generated method stub
+		int sender;
+		while(inbox.hasNext()) {
+			Message msg = inbox.next();
+			sender = inbox.getSender().ID;
+			//Sink start the flooding of message MCI for configuration initial
+			if(msg instanceof MCIMessage) {
+				MCIMessage mcimsg = (MCIMessage) msg;
+				if(this.HopToSink > mcimsg.getHopToSink()){
+					this.setColor(Color.GREEN);
+					this.NextHopSink = mcimsg.getSenderID();
+					this.HopToSink = mcimsg.getHopToSink();
+				  	mcimsg.setHopToSink(this.HopToSink+1);
+					mcimsg.setSenderID(this.ID);
+					
+					//S� envia uma vez...
+					if(!this.sentmci)
+					{
+						MessageSPTTimer MCICNS = new MessageSPTTimer(mcimsg);
+						double time = new UniformDistribution(0,2.05).nextSample();
+						MCICNS.startRelative(time,this);
+						this.sentmci = true;
+									
+						sptLog.logln("Flooding t " + (Global.currentTime)
+							+ " Ns "+ this.ID 
+							+ " Pi " + msg.hashCode() 
+							+ " Pt " +"wsn-infra-sink");
+					
+					}
+				}
+			 }
+			
+
+			//Nó de menor ID faz o flooding de detecção de eventos 
+			if(msg instanceof MANAMessage) {
+				MANAMessage manamsg = (MANAMessage) msg;
+					if (!sentmana){
+						sentmana=true;
+						MessageSPTTimer MANACNS = new MessageSPTTimer(manamsg);
+						double time = uniformRandom.nextSample();
+						MANACNS.startRelative(time, this);
+						sptLog.logln("Flooding t " + (Global.currentTime)
+								+ " Ns "+ this.ID 
+								+ " Pi " + msg.hashCode() 
+								+ " Pt " +"wsn-infra-ch");
+					}
+					if(this.myRole == Roles.SINK){
+						timerTREE.tnoStartRelative(0.01, this, TNO.TREE);	
+					//	timerTREE.startRelative(uniformRandom.nextSample(), this);
+					}
+				}
+
+			
+			
+			if (msg instanceof MSGTREE){
+				MSGTREE msgtree = (MSGTREE) msg;
+				if(this.ID == msgtree.getNexthop()){
+					this.filhosrecv.add(msgtree.getSentnode());
+							
+					if(this.myRole != Roles.SINK)
+					{
+						this.setColor(Color.yellow);
+						this.Disttree = this.Disttree + msgtree.getDisttree();
+						this.Disttreerecv = this.Disttreerecv +1;
+				
+						if(this.filhos.size() == 1){
+							this.filhossend.add(this.NextHopSink);
+							broadcast(new MSGTREE(this.Disttree+1, this.NextHopSink,this.ID));
+							
+						}
+						else if(this.filhos.size()==this.Disttreerecv){
+							broadcast(new MSGTREE(this.Disttree+1, this.NextHopSink,this.ID));
+							this.filhossend.add(this.NextHopSink);
+						}
+					
+					}else{
+						this.Disttree = this.Disttree + msgtree.getDisttree();
+						this.Disttreerecv = this.Disttreerecv +1;
+						Tools.appendToOutput("filhos: "+this.filhos.size()+"  rec: "+ this.Disttreerecv);
+						this.setColor(Color.black);	
+					//	Tools.appendToOutput("\n BUcETA "+this.Disttreerecv+" \n\n");
+						if(this.filhos.size() == 1){
+							sptLog.logln("Arestas "+ this.Disttree
+							);
+					//		System.out.append("Distância: "+ this.Disttree);
+						}else{
+						if(this.filhos.size()==this.Disttreerecv){
+								sptLog.logln("N: "+this.Disttreerecv +" Arestas "+ this.Disttree
+								);
+						//		System.out.append("Distância: "+ this.Disttree);
+						//		Tools.appendToOutput("\n BUVETA\n\n");
+						}
+						}
+						
+					}
+				}	
+			}
+
+			//Sent information about event to Sink
+			if(msg instanceof SPTDataMessage){
+				SPTDataMessage mdata = (SPTDataMessage)msg;
+				
+				if(this.ID == mdata.getDest()){
+					if (!this.filhos.contains((Object)sender)){
+						this.filhos.add(sender);
+					}
+				}
+				
+				if(this.ID == mdata.getDest()){
+					if(this.myRole != Roles.SINK)
+					{
+					
+						if (mdata.getSendTo() == "Sink"){
+//							double time = 100*uniformRandom.nextSample();
+//							time += (double)dataRate;
+							++this.aggregatePCKT;
+							this.msgAggPckts += mdata.getAgregados(); 
+						}
+					}
+					//if (this.myRole == Roles.RELAY){
+						
+						if (!this.son.contains((Object) inbox.getSender().ID))
+							son.add(inbox.getSender().ID);
+						if (!timerAggOn){
+							timerAggOn = true;
+							timerAgg = new SPTTimer(this,TNO.AGGREGATION);
+							if (son.size()<2){
+								timerAgg.tnoStartRelative(.0001*dataRate, this, TNO.AGGREGATION);
+								this.setColor(Color.blue);
+							}
+							else{
+								timerAgg.tnoStartRelative(dataRate, this, TNO.AGGREGATION);
+								this.setColor(Color.red);
+							}
+						}
+
+					//}
+					if(this.myRole == Roles.SINK)
+					{
+						sptLog.logln("Rdata t " + Global.currentTime
+								+ " Ns " + inbox.getSender()
+								+ " Ap " + mdata.getAgregados()
+								+ " Nd " + this.ID
+								);
+					}
+						
+				}
+			}
+		}
+	}
+
+	
+	public void aproximationtree(){
+		MessageTimer msgtree = new MessageTimer (new MSGTREE(1,this.NextHopSink,this.ID));
+	    double time = uniformRandom.nextSample();
+		msgtree.startRelative(time, this);	
+	}
+	@Override
+	public void init() {
+		
+		// TODO Auto-generated method stub
+		timerTREE = new SPTTimer(this,TNO.TREE);
+		myRole = Roles.RELAY;	
+		
+		double endTime=0;
+		
+		
+		try {
+			sptLog = Logging.getLogger(
+					sinalgo.configuration.Configuration.getStringParameter("Log/LogFile"));
+			dataRate = sinalgo.configuration.Configuration.getIntegerParameter("Event/DataRate");
+			endTime = sinalgo.configuration.Configuration.getDoubleParameter("SimTime");
+			eventEndTime = sinalgo.configuration.Configuration.getDoubleParameter("Event/EventEnd");
+			for (int i = 1; i <= sinalgo.configuration.Configuration.getIntegerParameter("Event/NumEvents"); i++) {
+				EventSPTTimer t = new EventSPTTimer(i);
+				t.startEventAbsolute(sinalgo.configuration.Configuration.getDoubleParameter("Event/EventStart"+i), this, i);	
+			}	
+		} catch (CorruptConfigurationEntryException e) {
+			// TODO: handle exception
+			e.printStackTrace();
+			System.exit(0);
+		}
+		if (this.ID==1){
+			this.setColor(Color.RED);
+			this.myRole = Roles.SINK;
+			this.mystatus = Status.READY;
+		}
+		//Event timers
+		EndSPTTimer etimer = new EndSPTTimer();
+		etimer.startAbsolute(endTime, this);
+		
+	}
+
+	@Override
+	public void neighborhoodChange() {
+		// TODO Auto-generated method stub
+	}
+
+	@Override
+	public void postStep() {
+		// TODO Auto-generated method stub
+	}
+
+	@Override
+	public void preStep() {
+		// TODO Auto-generated method stub
+	}
+	
+	@Override
+	public void draw(Graphics g, PositionTransformation pt, boolean highlight) {
+		// TODO Auto-generated method stub
+		if (this.ID == 1) highlight = true;
+		super.drawNodeAsDiskWithText(g, pt, highlight, Integer.toString(this.ID), 4, Color.WHITE);
+		
+	}
+	
+	// My methods
+	
+	@NodePopupMethod(menuText="Meu Papel")
+	public void myRole() {
+		Tools.appendToOutput(myRole+"\n");
+	}
+	@NodePopupMethod(menuText="Meu Status")
+	public void myStatus() {
+		Tools.appendToOutput(mystatus+"\n");
+	}
+	
+	@NodePopupMethod(menuText="Exibir Tabela")
+	public void myaggDist() {
+		Tools.appendToOutput("HopToSink: " + this.HopToSink + "\n" +
+							 "NextHopSink: " + this.NextHopSink + "\n" +
+							 "OwnerID:" + this.ownerID +"\n"
+						 );
+	}
+	
+	
+	public boolean insideEvent(sinalgo.nodes.Position p, int eventID){
+		double xc=0,yc=0, r=0;
+		try{
+			xc=sinalgo.configuration.Configuration.getDoubleParameter("Event/Xposition"+eventID);
+			yc=sinalgo.configuration.Configuration.getDoubleParameter("Event/Yposition"+eventID);
+			r = sinalgo.configuration.Configuration.getDoubleParameter("Event/EventSize");
+		}catch (CorruptConfigurationEntryException e){
+			e.printStackTrace();
+			System.exit(0);
+			
+		}
+		if (Math.pow((xc - p.xCoord),2) + Math.pow((yc -p.yCoord),2) < Math.pow(r/2,2)){
+			this.eventnum = eventID;
+			return true;
+		}
+		else 
+			return false;
+	}
+	
+	
+	public void startDetection(){
+		myRole = Roles.COLLABORATOR;
+		this.setColor(Color.cyan);
+		sptLog.logln("Detection t "+(Global.currentTime) 
+					+" Ns "+ this.ID 
+					+" Ev " +this.eventnum);
+		//cria um novo tipo de pacote (mane) o de anuncio de novo evento e faz o flooding
+
+		//e agenda para iniciar o flooding o nó de menor ID q detectou
+		MANAMessage manamsg = new MANAMessage(0,this.ID,this.ID);
+		MessageTimer detectTimer = new MessageTimer(manamsg);
+		detectTimer.startRelative(uniformRandom.nextSample(), this);
+		
+		this.mystatus = Status.MONITORING;
+		timerTREE.tnoStartRelative(uniformRandom.nextSample()+10, this, TNO.MONITORING);
+	}
+
+	//Node Sink start the Flooding of MCI
+	public void sendMCI(){
+		this.HopToSink = 0; 	// I am Sink
+		this.NextHopSink = this.ID;	// I am SInk
+		MessageSPTTimer mcimsg = new MessageSPTTimer (new MCIMessage(this.HopToSink+1,this.ID));
+		double time = uniformRandom.nextSample();
+		mcimsg.startRelative(time, this);
+		sptLog.logln("Flooding t " + (Global.currentTime)
+				+ " Ns "+ this.ID 
+				+ " Pi " + mcimsg.hashCode() 
+				+ " Pt " +"wsn-infra-sink");
+		
+
+	}
+
+	
+	
+	public void sendData(){
+		if (Global.currentTime > eventEndTime+100){
+			if(this.filhos.size() == 0){
+				aproximationtree();	
+				this.setColor(Color.BLACK);
+			}
+			return;
+		}
+		int myAgg = aggregatePCKT;
+		int myMsgAgg = msgAggPckts;
+		//clear counts
+		aggregatePCKT = 0;
+		msgAggPckts = 0;
+		this.setColor(Color.orange);
+		double time = uniformRandom.nextSample();
+		
+	
+		
+		if((this.senddata)){
+			
+			Message mdata = new SPTDataMessage(this.NextHopSink,null, "Sink",myMsgAgg+1);
+			MessageSPTTimer msgTimer = new MessageSPTTimer(mdata,dataRate);
+			time += (double)dataRate;
+			msgTimer.startRelative(time,this);
+			sptLog.logln("Sdata t "+ (Global.currentTime+ time)
+					+ " Ns "+ this.ID 
+					+ " Ap " + myAgg 
+					+ " Nd " + 1);
+			Tools.appendToOutput("SData :"+ this.ID +"\n");
+			
+		}
+	}
+	
+	public void printDegree(){
+		sptLog.logln(
+				"Degree "+
+				"Node "+
+				this.ID + " " + 
+				this.outgoingConnections.size() 
+		);
+	}
+
+
+	public void timeout(TNO tno){
+		switch(tno){
+			case TREE:
+				sendMCI(); // Make one Flooding of MCI (Message of Configuration Initial)
+				break;
+				
+			case MONITORING:
+				if (( (!this.senddata)) && ((this.myRole == Roles.COLLABORATOR) ))
+				{
+//					Tools.appendToOutput("\n Enviar\n");
+					this.senddata = true;
+					sendData(); 
+				}
+				break;
+			case AGGREGATION:
+				int myAgg = this.aggregatePCKT;
+				int myMsgAgg = msgAggPckts;
+				//clear counters
+				this.aggregatePCKT = 0;
+				msgAggPckts = 0;
+				if (myRole == Roles.RELAY){
+					if (son.size()<2)
+						timerAgg.tnoStartRelative(.001*dataRate, this, TNO.AGGREGATION);
+					else
+						timerAgg.tnoStartRelative(dataRate, this, TNO.AGGREGATION);
+				}
+				if(myAgg > 0) {
+					SPTDataMessage relayDataMessage = new SPTDataMessage(this.NextHopSink,null, "Sink",myMsgAgg);
+					MessageTimer msgTimer = new MessageTimer(relayDataMessage);
+					double time = uniformRandom.nextSample();
+					msgTimer.startRelative(time, this);
+					sptLog.logln("Sdata t "+ (Global.currentTime+ time)
+							+ " Ns "+ this.ID 
+							+ " Ap " + myAgg 
+							+ " Nd " + 1);
+//					Tools.appendToOutput("RelayData" + this.ID + " \n");
+				}
+				break;
+		}
+	}
+	@NodePopupMethod(menuText="son")
+	public void son() {
+		Tools.appendToOutput("My Son "+this.son+"\n");
+	}	
+	@NodePopupMethod(menuText="Timers")
+	public void timers() {
+		Tools.appendToOutput("My timers "+this.getTimers().size()+"\n");
+	}	
+	
+}
