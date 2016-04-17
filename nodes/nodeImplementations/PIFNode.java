@@ -1,6 +1,7 @@
 package projects.PIF.nodes.nodeImplementations;
 import java.awt.Color;
 import java.awt.Graphics;
+import java.util.ArrayList;
 
 import projects.PIF.nodes.messages.FEEDBACKMessage;
 import projects.PIF.nodes.messages.INFMessage;
@@ -15,17 +16,17 @@ import sinalgo.nodes.timers.Timer;
 import sinalgo.tools.Tools;
 
 public class PIFNode extends Node {
-	private boolean reached = false;
+	private boolean[] reached = new boolean[1000];
 	private int nextHopToSource;
-	private boolean sentMyFeedback;
-	MessageTimer msgFeedbackTimer;
-	FEEDBACKMessage msgFeedback;
+	private boolean[] sentMyFeedback = new boolean[1000];
+	private MessageTimer[] msgFeedbackTimer = new MessageTimer[1000];
+	private FEEDBACKMessage[] msgFeedback = new FEEDBACKMessage[1000];
 	public static int sentINF = 0;
 	public static int sentFeedback = 0;
 	public static int receivedFeedback = 0;
 	
 	public enum TNO {TNO_FEEDBACK };
-	private PIF_FeedbackTimer feedbackTimer;
+	private PIF_FeedbackTimer[] feedbackTimer = new PIF_FeedbackTimer[1000];
 	
 	@Override
 	public void handleMessages(Inbox inbox) {
@@ -39,27 +40,30 @@ public class PIFNode extends Node {
 			//N� recebeu uma mensagem INF	
 			if(msg instanceof INFMessage) {
 				INFMessage msgINF = (INFMessage) msg;
-				System.out.println("Node: "+this.ID+" recebeu INF " + msgINF.num + " do Node "+sender);
+				int n =  msgINF.num;
+				System.out.println("Node: "+this.ID+" recebeu INF " + n + " do Node "+sender);
 				
-				if(!this.reached)
+				if(!this.reached[n])
 				{
 					this.setColor(Color.GREEN);
-					this.reached = true;	
-					this.nextHopToSource = msgINF.getSenderID();
+					this.reached[n] = true;	
+					if (n == 1)
+						this.nextHopToSource = msgINF.getSenderID();
+					
 					msgINF.setSenderID(this.ID);
 					msgINF.senderFather = this.nextHopToSource;
 					MessageTimer infMSG = new MessageTimer(msgINF);
 					infMSG.startRelative(0.1,this);
 					
 					//Agenda o FEEDBACK
-					feedbackTimer = new PIF_FeedbackTimer(this, TNO.TNO_FEEDBACK);
-					feedbackTimer.tnoStartRelative(10, this, TNO.TNO_FEEDBACK);	
+					feedbackTimer[n] = new PIF_FeedbackTimer(n, this, TNO.TNO_FEEDBACK);
+					feedbackTimer[n].tnoStartRelative(10, this, TNO.TNO_FEEDBACK);	
 				}
 				// If received inf from child, wait for its feedback.
 				else if(msgINF.senderFather == this.ID)
 				{
-					if (feedbackTimer != null)
-						feedbackTimer.canceled = true;
+					if (feedbackTimer[n] != null)
+						feedbackTimer[n].canceled = true;
 				}
 				
 			}
@@ -67,27 +71,29 @@ public class PIFNode extends Node {
 			//Mensagem de Confirma��o
 			if(msg instanceof FEEDBACKMessage) {
 				FEEDBACKMessage newFeedback = (FEEDBACKMessage) msg;
+				int n = newFeedback.n;
 				
 				if (this.ID != 1){
 					if(newFeedback.getDestinationID() == this.ID){
 
 						// if already fired, make new buffer.
-						if (msgFeedbackTimer == null || msgFeedbackTimer.fired == true)
+						if (msgFeedbackTimer[n] == null || msgFeedbackTimer[n].fired == true)
 						{
-							msgFeedback = newFeedback;
-							msgFeedback.setDestinationID(this.nextHopToSource);
-							if (!sentMyFeedback)
+							msgFeedback[n] = newFeedback;
+							msgFeedback[n].setDestinationID(this.nextHopToSource);
+							
+							if (!sentMyFeedback[n])
 							{
-								msgFeedback.addSourceFeedbackID(this.ID);
-								sentMyFeedback = true;
+								msgFeedback[n].addSourceFeedbackID(this.ID);
+								sentMyFeedback[n] = true;
 							}
-							msgFeedbackTimer = new MessageTimer(msgFeedback);
+							msgFeedbackTimer[n] = new MessageTimer(msgFeedback[n]);
 						}
 						else  //else insert in buffer.
-							msgFeedback.appendSourceFeedbackID(newFeedback.getSourceFeedbackIDs());
+							msgFeedback[n].appendSourceFeedbackID(newFeedback.getSourceFeedbackIDs());
 						
-						msgFeedbackTimer.startRelative(0.1, this);
-						System.out.println("Node: "+this.ID+" Recebeu Feedback do Node "+ msgFeedback.getSourceFeedbackIDs() + " encaminhada pelo Node " +msgFeedback.getSenderID());	
+						msgFeedbackTimer[n].startRelative(0.1, this);
+						System.out.println("Node: "+this.ID+" Recebeu Feedback do Node "+ msgFeedback[n].getSourceFeedbackIDs() + " encaminhada pelo Node " +msgFeedback[n].getSenderID());	
 					}
 				}else{ 
 					System.out.println("Source node recebeu Feedback do Node "+ newFeedback.getSourceFeedbackIDs());
@@ -101,15 +107,15 @@ public class PIFNode extends Node {
 	}
 			
 		
-	public void feedbackStart(){
-		MessageTimer feedbackMSG = new MessageTimer (new FEEDBACKMessage(this.ID, this.ID, this.nextHopToSource));
+	public void feedbackStart(int n){
+		MessageTimer feedbackMSG = new MessageTimer (new FEEDBACKMessage(n, this.ID, this.ID, this.nextHopToSource));
 	  	feedbackMSG.startRelative(0.1, this);		
 	}
 	
-	public void timeout(TNO tno){
+	public void timeout(TNO tno, int n){
 		switch(tno){
 			case TNO_FEEDBACK:
-				feedbackStart();
+				feedbackStart(n);
 				break;	
 		}
 	}
@@ -120,9 +126,10 @@ public class PIFNode extends Node {
 		if (this.ID==1){
 			this.setColor(Color.RED);
 			this.nextHopToSource = this.ID;
-			this.reached = true;
+			for (int i = 0; i < 1000; ++i)
+				this.reached[i] = true;
 			
-			InstanceTimer infMSG = new InstanceTimer (1, this);
+			InstanceTimer infMSG = new InstanceTimer (0, this);
 	  		infMSG.startRelative(4.9, this);
 		}
 	}
@@ -150,10 +157,10 @@ public class PIFNode extends Node {
 		MessageTimer infMSG = new MessageTimer (new INFMessage(n, this.ID, this.nextHopToSource));
   		infMSG.startRelative(0.1, this);
   		
-  		if (n < 1000)
+  		if (n < 999)
   		{
-  			//InstanceTimer instMSG = new InstanceTimer (n+1, this);
-  			//instMSG.startRelative(4.9, this);
+  			InstanceTimer instMSG = new InstanceTimer (n+1, this);
+  			instMSG.startRelative(4.9, this);
   		}
 	}
 

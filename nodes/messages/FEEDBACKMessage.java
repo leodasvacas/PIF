@@ -6,16 +6,19 @@ import sinalgo.nodes.messages.Message;
 public class FEEDBACKMessage extends Message {
 	public int destinationID;
 	public int senderID;
+	public int n;
 	public HashSet<Integer> sourceFeedbackIDs;
 
-	public FEEDBACKMessage(int sourceFeedbackID, int senderID, int destinationID) {
+	public FEEDBACKMessage(int num, int sourceFeedbackID, int senderID, int destinationID) {
+		n = num;
 		this.destinationID = destinationID;
 		this.senderID = senderID;
 		this.sourceFeedbackIDs = new HashSet<Integer>();
 		this.sourceFeedbackIDs.add(sourceFeedbackID);
 	}
 	
-	public FEEDBACKMessage(HashSet<Integer> sourceFeedbackIDs, int senderID, int destinationID) {
+	public FEEDBACKMessage(int num, HashSet<Integer> sourceFeedbackIDs, int senderID, int destinationID) {
+		n = num;
 		this.destinationID = destinationID;
 		this.senderID = senderID;
 		this.sourceFeedbackIDs = sourceFeedbackIDs;
@@ -25,7 +28,7 @@ public class FEEDBACKMessage extends Message {
 	@Override
 	public Message clone() {
 		// TODO Auto-generated method stub
-		return new FEEDBACKMessage(this.sourceFeedbackIDs, this.senderID, this.destinationID);
+		return new FEEDBACKMessage(n, this.sourceFeedbackIDs, this.senderID, this.destinationID);
 	}
 
 	public HashSet<Integer> getSourceFeedbackIDs() {

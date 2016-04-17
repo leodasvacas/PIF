@@ -9,7 +9,10 @@ public class PIF_FeedbackTimer extends Timer {
 	private PIFNode.TNO tno;
 	public boolean canceled;
 	PIFNode n;
-	public PIF_FeedbackTimer (PIFNode n, PIFNode.TNO tno){
+	int num;
+	
+	public PIF_FeedbackTimer (int numb, PIFNode n, PIFNode.TNO tno){
+		num = numb;
 		this.tno = tno;
 		this.n = n;
 	}
@@ -18,7 +21,7 @@ public class PIF_FeedbackTimer extends Timer {
 	@Override
 	public void fire() {
 		if (!canceled)
-			n.timeout(tno);
+			n.timeout(tno, num);
 	}
 	
 	public void tnoStartRelative(double time, Node n, PIFNode.TNO tno){
