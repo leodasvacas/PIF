@@ -47,7 +47,7 @@ public class PIFNode extends Node {
 				{
 					this.setColor(Color.GREEN);
 					this.reached[n] = true;	
-					if (n == 1)
+					if (n == 0)
 						this.nextHopToSource = msgINF.getSenderID();
 					
 					msgINF.setSenderID(this.ID);
